@@ -1,7 +1,7 @@
 # Enhancing Joint Entity and Relation Extraction with Language Modeling and Hierarchical Attention
 
 Implementation of the papers
-[Enhancing Joint Entity and Relation Extraction with Language Modeling and Hierarchical Attention](https://arxiv.org/abs/1804.07847).
+[Enhancing Joint Entity and Relation Extraction with Language Modeling and Hierarchical Attention].
 
 # Requirements
 * Ubuntu 16.04
@@ -37,7 +37,6 @@ The model has several parameters such as:
 * Character embeddings
 * Ner loss (softmax or CRF)
 
-that could be specified in the configuration files (see [config](https://github.com/ChiRenjun/Joint-extraction-with-lm-and-att/configs)).
 
 ## Run the model
 
