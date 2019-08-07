@@ -52,12 +52,3 @@ Commands executed in ```./run.sh```:
 ```python3 train_es.py```
 2. Train on the concatenated (train + dev) set and evaluate on the test set until either (1) the max epochs or (2) the early stopping limit (specified by train_es.py) is exceeded
 ```python3 train_eval.py```
-
-## Notes
-
-Please cite our work when using this software.
-
-Giannis Bekoulis, Johannes Deleu, Thomas Demeester, Chris Develder. Joint entity recognition and relation extraction as a multi-head selection problem. Expert Systems with Applications, Volume 114, Pages 34-45, 2018
-
-Giannis Bekoulis, Johannes Deleu, Thomas Demeester, Chris Develder. Adversarial training for multi-context joint entity and relation extraction, In the Proceedings of the Conference on Empirical Methods in Natural Language Processing (EMNLP), 2018
-
