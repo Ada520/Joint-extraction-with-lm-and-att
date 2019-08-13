@@ -1,15 +1,22 @@
 # -*- coding: utf-8 -*-
+import sys
+import os.path
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+sys.path.append(rootPath)
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "/..")))
+sys.path.extend(['/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/d/Program Files/Python/Python36/python36.zip', '/mnt/d/Program Files/Python/Python36/DLLs', '/mnt/d/Program Files/Python/Python36/lib', '/mnt/d/Program Files/Python/Python36', '/mnt/d/Program Files/Python/Python36/lib/site-packages', '/mnt/c/Program Files/JetBrains/PyCharm 2018.3.2/helpers/pycharm_matplotlib_backend'])
+
 import random
 import gensim
 import gzip
 import numpy as np
 import ast
 import copy
-import sys
 from sklearn.model_selection  import train_test_split
 from prettytable import PrettyTable
 import re
-import tensorflow as tf
+
 
 """Generic set of classes and methods"""
 
@@ -79,6 +86,40 @@ def getCharsFromDocuments(documents):
     chars.sort()
     return chars
 
+def getPositionFromDocuments(documents):
+    pos1 = []
+    pos2 = []
+    for doc in documents:
+        # for tokens in doc.tokens:
+        pos11 = -1
+        pos22 = -1
+        for i in range(len(doc.relations)):
+            if not 'N' in doc.relations[i]:
+                pos11 = i
+                pos22 = doc.heads[i][0]
+                break
+        if pos11 == -1:
+            pos11 = 0
+        if pos22 == -1:
+            pos22 = 0
+
+        rel_e1 = []
+        rel_e2 = []
+        for i in range(len(doc.tokens)):
+            rel_e1.append(pos_embed(i - pos11))
+            rel_e2.append(pos_embed(i - pos22))
+        pos1.append(rel_e1)
+        pos2.append(rel_e2)
+
+    return pos1, pos2
+
+def pos_embed(x):
+    if x < -60:
+        return 0
+    if -60 <= x <= 60:
+        return x + 61
+    if x > 60:
+        return 122
 
 ###run one time to obtain the ner labels
 def getEntitiesFromDocuments(documents):
@@ -94,6 +135,9 @@ def getEntitiesFromDocuments(documents):
 
     BIOtags = list(set(BIOtags))
     BIOtags.sort()
+    print("biotags!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11")
+    print(BIOtags)
+    print(BIOtags.index('O'))
     ECtags = list(set(ECtags))
     ECtags.sort()
     return BIOtags, ECtags
@@ -137,7 +181,6 @@ def labelsListToIds(listofLabels, setofLabels):
 def getScoringMatrixHeads(listofRelations, setofLabels, heads):
     scoringMatrixHeads = []
     relationIds = labelsListToIds(listofRelations, setofLabels)
-
 
     for relIdx in range(len(relationIds)):
         # print (rels[relIdx]*getNumberOfClasses()+labelJointIds[relIdx])
@@ -244,6 +287,7 @@ def printParameters(config):
     t.add_row(['Use adversarial',config.use_adversarial])
     t.add_row(['Use self_attention', config.self_attention])
 
+
     # hyperparameters
     t.add_row(['Dropout embedding ', config.dropout_embedding])
     t.add_row(['Dropout lstm ', config.dropout_lstm])
@@ -268,9 +312,11 @@ def printParameters(config):
 def getSegmentationDict(lst):
     return {k: v for v, k in enumerate(lst)}
 
-def generator(data, m,config,train=False):
+def generator(data, m, config, train=False):
     # generate the data
     embeddingIds = m['embeddingIds']
+    pos1_emb = m['pos1_emb']
+    pos2_emb = m['pos2_emb']
     isTrain=m['isTrain']
 
     scoringMatrixGold = m['scoringMatrixGold']
@@ -291,6 +337,7 @@ def generator(data, m,config,train=False):
     dropout_lstm_output_keep = m['dropout_lstm_output']
     dropout_fcl_ner_keep = m['dropout_fcl_ner']
     dropout_fcl_rel_keep = m['dropout_fcl_rel']
+    # gru_keep_prob = m['gru_keep_prob']
 
 
     dropout_embedding_prob = 1
@@ -298,6 +345,7 @@ def generator(data, m,config,train=False):
     dropout_lstm_output_prob = 1
     dropout_fcl_ner_prob = 1
     dropout_fcl_rel_prob = 1
+    # gru_rel_prob = 1
 
     if config.use_dropout == True and train==True:
 
@@ -306,6 +354,7 @@ def generator(data, m,config,train=False):
         dropout_lstm_output_prob = config.dropout_lstm_output
         dropout_fcl_ner_prob = config.dropout_fcl_ner
         dropout_fcl_rel_prob = config.dropout_fcl_rel
+        # gru_rel_prob = config.gru_keep_prob
 
     data_copy = copy.deepcopy(data)
     # train_ind=np.arange(len(train.data))
@@ -327,6 +376,8 @@ def generator(data, m,config,train=False):
 
     # batchsize=16 # number of documents per batch
     batches_embeddingIds = []  # e.g., 131 batches
+    batches_pos1_emb = []
+    batches_pos2_emb = []
     batches_charIds = []  # e.g., 131 batches
     batches_scoringMatrixHeadIds = []  # e.g., 131 batches
     batches_scoringMatrix = []  # e.g., 131 batches
@@ -339,6 +390,8 @@ def generator(data, m,config,train=False):
     batches_doc_ids = []
 
     docs_batch_embeddingIds = []  # e.g., 587 max doc length - complete with -1 when the size of the doc is smaller
+    docs_batch_pos1 = []
+    docs_batch_pos2 = []
     docs_batch_charIds = []  # e.g., 587 max doc length - complete with -1 when the size of the doc is smaller
     docs_batch_scoringMatrixHeadIds = []
     docs_batch_scoringMatrix = []
@@ -375,6 +428,8 @@ def generator(data, m,config,train=False):
             # print (docIdx)
             # print ("new batch")
             batches_embeddingIds.append(docs_batch_embeddingIds)
+            batches_pos1_emb.append(docs_batch_pos1)
+            batches_pos2_emb.append(docs_batch_pos2)
             batches_charIds.append(docs_batch_charIds)
 
             batches_scoringMatrixHeadIds.append(docs_batch_scoringMatrixHeadIds)
@@ -389,6 +444,8 @@ def generator(data, m,config,train=False):
             batches_doc_ids.append(docs_batch_doc_ids)
 
             docs_batch_embeddingIds = []  # e.g., 587 max doc length - complete with -1 when the size of the doc is smaller
+            docs_batch_pos1 = []
+            docs_batch_pos2 = []
             docs_batch_charIds = []  # e.g., 587 max doc length - complete with -1 when the size of the doc is smaller
             docs_batch_scoringMatrixHeadIds = []
             docs_batch_scoringMatrix = []
@@ -423,6 +480,8 @@ def generator(data, m,config,train=False):
 
         sumLen += len(doc.token_ids)
         docs_batch_embeddingIds.append(doc.embedding_ids)
+        docs_batch_pos1.append(doc.pos1_ids)
+        docs_batch_pos2.append(doc.pos2_ids)
         docs_batch_charIds.append(doc.char_ids)
         docs_batch_scoringMatrixHeadIds.append(doc.joint_ids)
 
@@ -454,6 +513,8 @@ def generator(data, m,config,train=False):
         if docIdx == len(
                 data_copy.data) - 1:  ## if there are no documents left - append the batch - usually it is shorter batch
             batches_embeddingIds.append(docs_batch_embeddingIds)
+            batches_pos1_emb.append(docs_batch_pos1)
+            batches_pos2_emb.append(docs_batch_pos2)
             batches_charIds.append(docs_batch_charIds)
             batches_scoringMatrixHeadIds.append(docs_batch_scoringMatrixHeadIds)
             batches_scoringMatrix.append(docs_batch_scoringMatrix)
@@ -474,6 +535,8 @@ def generator(data, m,config,train=False):
     for bIdx in range(len(batches_embeddingIds)):
 
         batch_embeddingIds = batches_embeddingIds[bIdx]
+        batch_pos1_emb = batches_pos1_emb[bIdx]
+        batch_pos2_emb = batches_pos2_emb[bIdx]
         batch_charIds = batches_charIds[bIdx]
         batch_scoringMatrixHeadIds = batches_scoringMatrixHeadIds[bIdx]
 
@@ -484,6 +547,8 @@ def generator(data, m,config,train=False):
 
         for dIdx in range(len(batch_embeddingIds)):
             embeddingId_doc = batch_embeddingIds[dIdx]
+            pos1_doc = batch_pos1_emb[dIdx]
+            pos2_doc = batch_pos2_emb[dIdx]
             charIds_doc = batch_charIds[dIdx]
             scoringMatrixHeadId_doc = batch_scoringMatrixHeadIds[dIdx]
 
@@ -533,6 +598,8 @@ def generator(data, m,config,train=False):
     for bIdx in range(len(batches_embeddingIds)):  # 131
         # print (bIdx)
         batch_embeddingIds = np.asarray(batches_embeddingIds[bIdx])
+        batch_pos1_emb = np.asarray(batches_pos1_emb[bIdx])
+        batch_pos2_emb = np.asarray(batches_pos2_emb[bIdx])
         batch_charIds = np.asarray(batches_charIds[bIdx])
         batch_scoringMatrix = np.asarray(batches_scoringMatrix[bIdx])
 
@@ -548,12 +615,9 @@ def generator(data, m,config,train=False):
         docs_length = np.asarray(lenBatchesDoc[bIdx])
         tokenslength = np.asarray(lenBatchesChars[bIdx])
 
-
-
-
         yield {dropout_embedding_keep:dropout_embedding_prob,dropout_lstm_keep:dropout_lstm_prob,dropout_lstm_output_keep:dropout_lstm_output_prob,
                dropout_fcl_ner_keep:dropout_fcl_ner_prob,dropout_fcl_rel_keep:dropout_fcl_rel_prob,isTrain:train,charIds:batch_charIds,
-               tokensLens:tokenslength, embeddingIds: batch_embeddingIds,entity_tags_ids:batch_ner_ids,entity_tags:batch_ner,
+               tokensLens:tokenslength, embeddingIds: batch_embeddingIds,pos1_emb:batch_pos1_emb,pos2_emb:batch_pos2_emb, entity_tags_ids:batch_ner_ids,entity_tags:batch_ner,
                tokens:batch_token,BIO: batch_bio,tokenIds:batch_tokenId,scoringMatrixGold:batch_scoringMatrix, seqlen:docs_length, doc_ids:batch_doc_id }
 
 
