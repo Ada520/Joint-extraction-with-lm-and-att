@@ -1,3 +1,11 @@
+import sys
+import os.path
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+sys.path.append(rootPath)
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "/..")))
+sys.path.extend(['/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/d/Program Files/Python/Python36/python36.zip', '/mnt/d/Program Files/Python/Python36/DLLs', '/mnt/d/Program Files/Python/Python36/lib', '/mnt/d/Program Files/Python/Python36', '/mnt/d/Program Files/Python/Python36/lib/site-packages', '/mnt/c/Program Files/JetBrains/PyCharm 2018.3.2/helpers/pycharm_matplotlib_backend'])
+
 import utils
 import time
 import eval
@@ -5,7 +13,6 @@ import tensorflow as tf
 
 class model:
     """Set of classes and methods for training the model and computing the ner and head selection loss"""
-
 
     def __init__(self,config,emb_mtx,sess):
         """"Initialize data"""
@@ -26,7 +33,7 @@ class model:
                 'Valid evaluation methods : "strict" and "boundaries" in "BIO" mode and "relaxed" in "EC" mode .')
 
 
-    def train(self,train_data,operations,iter):
+    def train(self,train_data, operations, iter):
 
             loss = 0
 
@@ -38,13 +45,13 @@ class model:
                      operations.m_op], feed_dict=x_train)  # sess.run(embedding_init, feed_dict={embedding_placeholder: wordvectors})
                 
                 if self.config.evaluation_method == "relaxed":
-                    evaluator.add(predicted_ner, actual_ner, predicted_rel, actual_rel,m_train['BIO'])
+                    evaluator.add(predicted_ner, actual_ner, predicted_rel, actual_rel, m_train['BIO'])
                 else:
                     evaluator.add(predicted_ner, actual_ner, predicted_rel, actual_rel)
 
                 loss += val
 
-            print('****iter %d****' % (iter))
+            print('\n****iter %d****' % (iter))
             print('-------Train-------')
             print('loss: %f ' % (loss))
 
@@ -74,14 +81,17 @@ class model:
                 evaluator.add(predicted_ner, actual_ner, predicted_rel, actual_rel)
 
         if self.config.evaluation_method == "relaxed":
-            evaluator.computeInfoMacro(printScores=True)
+            if set == 'test':
+                evaluator.computeInfoMacro(printScores=True)
+            else:
+                evaluator.computeInfoMacro(printScores=True)
             if "other" in [x.lower() for x in self.config.dataset_set_ec_tags]: # if other class exists report score without "Other" class, see previous work on the CoNLL04
                 return evaluator.getMacroF1scoresNoOtherClass()[2]
             else:
                 return evaluator.getMacroF1scores()[2]
 
         else:
-            evaluator.printInfo()
+            evaluator.printInfo(printScores=True)
             return  evaluator.getChunkedOverallAvgF1()
 
 
@@ -133,8 +143,6 @@ class model:
     def broadcasting(self, left, right):
         import tensorflow as tf
 
-
-
         left = tf.transpose(left, perm=[1, 0, 2])
         left = tf.expand_dims(left, 3)
 
@@ -146,16 +154,15 @@ class model:
 
         return B
 
-    def getNerScores(self, lstm_out, n_types=1, dropout_keep_in_prob=1):
+    def getNerScores(self, rnn_out, hidden_size, n_types=1, dropout_keep_in_prob=1):
         import tensorflow as tf
 
-
-        u_a = tf.get_variable("u_typ", [self.config.hidden_size_lstm * 2, self.config.hidden_size_n1])  # [128 32]
+        u_a = tf.get_variable("u_typ", [hidden_size , self.config.hidden_size_n1])  # [128 32]
         v = tf.get_variable("v_typ", [self.config.hidden_size_n1, n_types])  # [32,1] or [32,10]
         b_s = tf.get_variable("b_typ", [self.config.hidden_size_n1])
         b_c = tf.get_variable("b_ctyp", [n_types])
 
-        mul = tf.einsum('aij,jk->aik', lstm_out, u_a)  # [16 348 64] * #[64 32] = [16 348 32]
+        mul = tf.einsum('aij,jk->aik', rnn_out, u_a)  # [16 348 64] * #[64 32] = [16 348 32]
 
         sum = mul + b_s
         if self.config.activation=="tanh":
@@ -168,98 +175,135 @@ class model:
 
         g = tf.einsum('aik,kp->aip', output, v) + b_c
 
-
         return g
 
-    def getHeadSelectionScores(self, lstm_out,dropout_keep_in_prob=1):
+    def getHeadSelectionScores(self, rnn_out, hidden_size,dropout_keep_in_prob=1):
         import tensorflow as tf
 
-        u_a = tf.get_variable("u_a", [(self.config.hidden_size_lstm * 2) + self.config.label_embeddings_size, self.config.hidden_size_n1])  # [128 64]
-        w_a = tf.get_variable("w_a", [(self.config.hidden_size_lstm * 2) + self.config.label_embeddings_size, self.config.hidden_size_n1])  # [128 64]
-        v = tf.get_variable("v", [self.config.hidden_size_n1, len(self.config.dataset_set_relations)])  # [64,1] or [64,4]
+        u_a = tf.get_variable("u_a", [hidden_size + self.config.label_embeddings_size, self.config.hidden_size_n1])  # [128 32]
+        w_a = tf.get_variable("w_a", [hidden_size + self.config.label_embeddings_size, self.config.hidden_size_n1])  # [128 32]
+        v = tf.get_variable("v", [self.config.hidden_size_n1, len(self.config.dataset_set_relations)])  # [32,1] or [32,4]
         b_s = tf.get_variable("b_s", [self.config.hidden_size_n1])
 
+        left = tf.einsum('aij,jk->aik', rnn_out, u_a)  # [16 348 64] * #[64 32] = [16 348 32]
+        right = tf.einsum('aij,jk->aik', rnn_out, w_a)  # [16 348 64] * #[64 32] = [16 348 32]
 
-
-        left = tf.einsum('aij,jk->aik', lstm_out, u_a)  # [16 348 128] * #[128 64] = [16 348 64]
-        right = tf.einsum('aij,jk->aik', lstm_out, w_a)  # [16 348 128] * #[128 64] = [16 348 64]
-
-
-
-        outer_sum = self.broadcasting(left, right)  # [16 348 348 64]
-
+        outer_sum = self.broadcasting(left, right)  # [16 348 348 32]
         outer_sum_bias = outer_sum + b_s
-
 
         if self.config.activation=="tanh":
             output = tf.tanh(outer_sum_bias)
         elif self.config.activation=="relu":
             output = tf.nn.relu(outer_sum_bias)
 
-
         if self.config.use_dropout==True:
             output = tf.nn.dropout(output, keep_prob=dropout_keep_in_prob)
 
-
         output = tf.nn.dropout(output, keep_prob=dropout_keep_in_prob)
 
-
-
-        g = tf.einsum('aijk,kp->aijp', output, v) # [16 348 348 64]*[64,4] = [16 348 348 4]
-
-
-
-        g = tf.reshape(g, [tf.shape(g)[0], tf.shape(g)[1], tf.shape(g)[2] * len(self.config.dataset_set_relations)]) # [16 348 348*4]
-
-
+        g = tf.einsum('aijk,kp->aijp', output, v) # [16 348 348 1] or [16 348 348 4]
+        g = tf.reshape(g, [tf.shape(g)[0], tf.shape(g)[1], tf.shape(g)[2] * len(self.config.dataset_set_relations)])
 
         return g
 
 
-
     def computeLoss(self,input_rnn, dropout_embedding_keep,dropout_lstm_keep,dropout_lstm_output_keep,
-                    seqlen,dropout_fcl_ner_keep,ners_ids, dropout_fcl_rel_keep,is_train,scoring_matrix_gold, reuse = False):
-
-        import tensorflow as tf
+                    seqlen,dropout_fcl_ner_keep,ners_ids, dropout_fcl_rel_keep,is_train,
+                    embedding_ids,pos1_ids, pos2_ids,scoring_matrix_gold, reuse = False):
 
         with tf.variable_scope("loss_computation", reuse=reuse):
-
+            lossNER = 0.0
             if self.config.use_dropout:
                     input_rnn = tf.nn.dropout(input_rnn, keep_prob=dropout_embedding_keep)
                     #input_rnn = tf.Print(input_rnn, [dropout_embedding_keep], 'embedding:  ', summarize=1000)
-            for i in range(self.config.num_lstm_layers):
-                if self.config.use_dropout and i>0:
-                    input_rnn = tf.nn.dropout(input_rnn, keep_prob=dropout_lstm_keep)
-                    #input_rnn = tf.Print(input_rnn, [dropout_lstm_keep], 'lstm:  ', summarize=1000)
+            if self.config.use_GRU == False:
+                for i in range(self.config.num_lstm_layers):
+                    if self.config.use_dropout and i>0:
+                        input_rnn = tf.nn.dropout(input_rnn, keep_prob=dropout_lstm_keep)
+                        #input_rnn = tf.Print(input_rnn, [dropout_lstm_keep], 'lstm:  ', summarize=1000)
 
-                lstm_fw_cell = tf.contrib.rnn.BasicLSTMCell(self.config.hidden_size_lstm)
-                # Backward direction cell
-                lstm_bw_cell = tf.contrib.rnn.BasicLSTMCell(self.config.hidden_size_lstm)
+                    lstm_fw_cell = tf.contrib.rnn.BasicLSTMCell(self.config.hidden_size_lstm)
+                    # Backward direction cell
+                    lstm_bw_cell = tf.contrib.rnn.BasicLSTMCell(self.config.hidden_size_lstm)
 
-                lstm_out, _ = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw=lstm_fw_cell,
-                    cell_bw=lstm_bw_cell,
-                    inputs=input_rnn,
-                    sequence_length=seqlen,
-                    dtype=tf.float32, scope='BiLSTM' + str(i))
+                    (lstm_outputs_fw, lstm_outputs_bw), _ = tf.nn.bidirectional_dynamic_rnn(
+                        cell_fw=lstm_fw_cell,
+                        cell_bw=lstm_bw_cell,
+                        inputs=input_rnn,
+                        sequence_length=seqlen,
+                        dtype=tf.float32, scope='BiLSTM' + str(i))
 
-                input_rnn = tf.concat(lstm_out, 2)
+                    # input_rnn = tf.concat(lstm_out, 2)
+                    # lstm_output = input_rnn
 
-                lstm_output = input_rnn
+                if self.config.use_dropout:
+                    # lstm_output = tf.nn.dropout(lstm_output, keep_prob=dropout_lstm_output_keep)
+                    lstm_outputs_fw = tf.nn.dropout(lstm_outputs_fw, keep_prob=dropout_lstm_output_keep)
+                    lstm_outputs_bw = tf.nn.dropout(lstm_outputs_bw, keep_prob=dropout_lstm_output_keep)
 
-            if self.config.use_dropout:
-                lstm_output = tf.nn.dropout(lstm_output, keep_prob=dropout_lstm_output_keep)
 
+                if self.config.lmcost_lstm_gamma > 0.0:
+                    lossNER += self.config.lmcost_lstm_gamma * self.construct_lmcost(lstm_outputs_fw, lstm_outputs_bw,
+                                                                                    seqlen, embedding_ids, "separate",
+                                                                                    "lmcost_lstm_separate")
+                if self.config.lmcost_joint_lstm_gamma > 0.0:
+                    lossNER += self.config.lmcost_joint_lstm_gamma * self.construct_lmcost(lstm_outputs_fw,
+                                                                                          lstm_outputs_bw,
+                                                                                          seqlen, embedding_ids,
+                                                                                          "joint", "lmcost_lstm_joint")
+                output = tf.concat([lstm_outputs_fw, lstm_outputs_bw], 2)
 
-            mask = tf.sequence_mask(seqlen, dtype=tf.float32)
+            if self.config.use_GRU == True:
+                gru_cell_forward = tf.contrib.rnn.GRUCell(self.config.gru_size)
+                gru_cell_backward = tf.contrib.rnn.GRUCell(self.config.gru_size)
 
-            ner_input = lstm_output
-            
+                if self.config.gru_keep_prob < 1:
+                    gru_cell_forward = tf.contrib.rnn.DropoutWrapper(gru_cell_forward,
+                                                                     output_keep_prob=self.config.gru_keep_prob)
+                    gru_cell_backward = tf.contrib.rnn.DropoutWrapper(gru_cell_backward,
+                                                                      output_keep_prob=self.config.gru_keep_prob)
+                cell_forward = tf.contrib.rnn.MultiRNNCell([gru_cell_forward] * seqlen)
+                cell_backward = tf.contrib.rnn.MultiRNNCell([gru_cell_backward] * seqlen)
+                self._initial_state_forward = cell_forward.zero_state(self.config.batchsize, tf.float32)
+                self._initial_state_backward = cell_backward.zero_state(self.config.batchsize, tf.float32)
+
+                inputs_forward = input_rnn
+                inputs_backward = tf.reverse(input_rnn, [1])
+                outputs_forward = []
+                state_forward = self._initial_state_forward
+                # Bi-GRU layer
+                with tf.variable_scope('GRU_FORWARD') as scope:
+                    for step in range(seqlen):
+                        if step > 0:
+                            scope.reuse_variables()
+                        (cell_output_forward, state_forward) = cell_forward(inputs_forward[:, step, :], state_forward)
+                        outputs_forward.append(cell_output_forward)
+
+                outputs_backward = []
+
+                state_backward = self._initial_state_backward
+                with tf.variable_scope('GRU_BACKWARD') as scope:
+                    for step in range(seqlen):
+                        if step > 0:
+                            scope.reuse_variables()
+                        (cell_output_backward, state_backward) = cell_backward(inputs_backward[:, step, :],
+                                                                               state_backward)
+                        outputs_backward.append(cell_output_backward)
+
+                output_forward = tf.reshape(tf.concat(axis=1, values=outputs_forward), [self.config.batchsize, seqlen, self.config.gru_size])
+                output_backward = tf.reverse(
+                    tf.reshape(tf.concat(axis=1, values=outputs_backward), [self.config.batchsize, seqlen, self.config.gru_size]),
+                    [1])
+                output = tf.add(output_forward, output_backward)
+
+            # mask = tf.sequence_mask(seqlen, dtype=tf.float32)
+            ner_input = output
+
             is_training = tf.cond(is_train > 0, lambda: True, lambda: False)
             print(is_training)
             if self.config.self_attention == True:
-                ner_input = self.multihead_attention(queries=lstm_output,
-                                                          keys=lstm_output,
+                ner_input = self.multihead_attention(queries=output,
+                                                          keys=output,
                                                           num_units=self.config.hidden_size_lstm * 2,
                                                           num_heads=self.config.num_heads,
                                                           dropout_rate=0.1,
@@ -267,38 +311,54 @@ class model:
                                                           causality=False,
                                                           scope="multihead_attention_1",
                                                           reuse=False)
-            
+
             # loss= tf.Print(loss, [tf.shape(loss)], 'shape of loss is:') # same as scoring matrix ie, [1 59 590]
             if self.config.ner_classes == "EC":
-
-                nerScores = self.getNerScores(ner_input, len(self.config.dataset_set_ec_tags),
-                                              dropout_keep_in_prob=dropout_fcl_ner_keep)
+                if self.config.use_GRU == False:
+                    nerScores = self.getNerScores(ner_input,self.config.hidden_size_lstm * 2, len(self.config.dataset_set_ec_tags),
+                                                    dropout_keep_in_prob=dropout_fcl_ner_keep)
+                if self.config.use_GRU == True:
+                    nerScores = self.getNerScores(ner_input,self.config.gru_size, len(self.config.dataset_set_ec_tags),
+                                                    dropout_keep_in_prob=dropout_fcl_ner_keep)
                 label_matrix = tf.get_variable(name="label_embeddings", dtype=tf.float32,
                                                shape=[len(self.config.dataset_set_ec_tags),
                                                       self.config.label_embeddings_size])
             elif self.config.ner_classes == "BIO":
-
-                nerScores = self.getNerScores(ner_input, len(self.config.dataset_set_bio_tags),
-                                              dropout_keep_in_prob=dropout_fcl_ner_keep)
+                print('********************************dataset_set_bio_tags')
+                print(self.config.dataset_set_bio_tags)
+                if self.config.use_GRU == False:
+                    nerScores = self.getNerScores(ner_input, self.config.hidden_size_lstm * 2, len(self.config.dataset_set_bio_tags),
+                                                    dropout_keep_in_prob=dropout_fcl_ner_keep)
+                if self.config.use_GRU == True:
+                    nerScores = self.getNerScores(ner_input, self.config.gru_size, len(self.config.dataset_set_bio_tags),
+                                                  dropout_keep_in_prob=dropout_fcl_ner_keep)
                 label_matrix = tf.get_variable(name="label_embeddings", dtype=tf.float32,
                                                shape=[len(self.config.dataset_set_bio_tags),
                                                       self.config.label_embeddings_size])
 
             # nerScores = tf.Print(nerScores, [tf.shape(ners_ids), ners_ids, tf.shape(nerScores)], 'ners_ids:  ', summarize=1000)
 
-            
+
             if self.config.ner_loss == "crf":
                 log_likelihood, transition_params = tf.contrib.crf.crf_log_likelihood(nerScores, ners_ids, seqlen)
-                lossNER = -log_likelihood
+                lossTemp = -log_likelihood
                 predNers, viterbi_score = tf.contrib.crf.crf_decode(nerScores, transition_params, seqlen)
 
             elif self.config.ner_loss == "softmax":
-                lossNER = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=nerScores, labels=ners_ids)
+                lossTemp = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=nerScores, labels=ners_ids)
                 predNers = tf.cast(tf.arg_max(nerScores, 2), tf.int32)
-                
+
+            key_masks = tf.cast(tf.sign(tf.abs(predNers - 8)), tf.float32)  # (N, T_k)
+            key_masks = tf.multiply(key_masks, lossTemp)  # (h*N, T_k)
+
+            if self.config.use_bias == True:
+                lossNER += lossTemp + self.config.weight_b * key_masks
+            else:
+                lossNER += lossTemp
+
             if self.config.self_attention == True:
-                lstm_output = self.multihead_attention(queries=lstm_output,
-                                                          keys=lstm_output,
+                output = self.multihead_attention(queries=output,
+                                                          keys=output,
                                                           num_units=self.config.hidden_size_lstm * 2,
                                                           num_heads=self.config.num_heads,
                                                           dropout_rate=0.1,
@@ -309,28 +369,26 @@ class model:
 
 
             if self.config.label_embeddings_size > 0:
-
                 labels = tf.cond(is_train > 0, lambda: ners_ids, lambda: predNers)
-
-
                 label_embeddings = tf.nn.embedding_lookup(label_matrix, labels)
-                rel_input = tf.concat([lstm_output, label_embeddings], axis=2)
+                rel_input = tf.concat([output, label_embeddings], axis=2)
 
             else:
+                rel_input = output
 
-                rel_input = lstm_output
 
-
-            rel_scores = self.getHeadSelectionScores(rel_input,
-                                                     dropout_keep_in_prob=dropout_fcl_rel_keep)
-
+            if self.config.use_GRU == False:
+                rel_scores = self.getHeadSelectionScores(rel_input, self.config.hidden_size_lstm * 2,
+                                                         dropout_keep_in_prob=dropout_fcl_rel_keep)
+            if self.config.use_GRU == True:
+                rel_scores = self.getHeadSelectionScores(rel_input, self.config.gru_size,
+                                                         dropout_keep_in_prob=dropout_fcl_rel_keep)
 
             lossREL = tf.nn.sigmoid_cross_entropy_with_logits(logits=rel_scores, labels=scoring_matrix_gold)
             probas=tf.nn.sigmoid(rel_scores)
             predictedRel = tf.round(probas)
 
             return lossNER,lossREL,predNers,predictedRel,rel_scores
-
 
     def normalize(self, inputs,
                   epsilon = 1e-8,
@@ -453,6 +511,35 @@ class model:
 
         return outputs
 
+    def construct_lmcost(self, input_tensor_fw, input_tensor_bw, sentence_lengths, target_ids, lmcost_type, name):
+        with tf.variable_scope(name):
+            # lmcost_max_vocab_size = min(tf.shape(target_ids)[0], self.config.lmcost_max_vocab_size)
+            lmcost_max_vocab_size = self.config.lmcost_max_vocab_size
+            target_ids = tf.where(tf.greater_equal(target_ids, lmcost_max_vocab_size-1), x=(lmcost_max_vocab_size-1)+tf.zeros_like(target_ids), y=target_ids)
+            cost = 0.0
+            if lmcost_type == "separate":
+                lmcost_fw_mask = tf.sequence_mask(sentence_lengths, maxlen=tf.shape(target_ids)[1])[:,1:]
+                lmcost_bw_mask = tf.sequence_mask(sentence_lengths, maxlen=tf.shape(target_ids)[1])[:,:-1]
+                lmcost_fw = self._construct_lmcost(input_tensor_fw[:,:-1,:], lmcost_max_vocab_size, lmcost_fw_mask, target_ids[:,1:], name=name+"_fw")
+                lmcost_bw = self._construct_lmcost(input_tensor_bw[:,1:,:], lmcost_max_vocab_size, lmcost_bw_mask, target_ids[:,:-1], name=name+"_bw")
+                cost += lmcost_fw + lmcost_bw
+            elif lmcost_type == "joint":
+                joint_input_tensor = tf.concat([input_tensor_fw[:,:-2,:], input_tensor_bw[:,2:,:]], axis=-1)
+                lmcost_mask = tf.sequence_mask(sentence_lengths, maxlen=tf.shape(target_ids)[1])[:,1:-1]
+                cost += self._construct_lmcost(joint_input_tensor, lmcost_max_vocab_size, lmcost_mask, target_ids[:,1:-1], name=name+"_joint")
+            else:
+                raise ValueError("Unknown lmcost_type: " + str(lmcost_type))
+            return cost
+
+
+    def _construct_lmcost(self, input_tensor, lmcost_max_vocab_size, lmcost_mask, target_ids, name):
+        with tf.variable_scope(name):
+            lmcost_hidden_layer = tf.layers.dense(input_tensor, self.config.lmcost_hidden_layer_size, activation=tf.tanh, kernel_initializer=self.initializer)
+            lmcost_output = tf.layers.dense(lmcost_hidden_layer, lmcost_max_vocab_size, activation=None, kernel_initializer=self.initializer)
+            lmcost_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=lmcost_output, labels=target_ids)
+            lmcost_loss = tf.where(lmcost_mask, lmcost_loss, tf.zeros_like(lmcost_loss))
+            return tf.reduce_sum(lmcost_loss)
+
     def run(self):
 
         import tensorflow as tf
@@ -465,6 +552,8 @@ class model:
         word_lengths = tf.placeholder(tf.int32, shape=[None, None])
 
         embedding_ids = tf.placeholder(tf.int32, [None, None])  # [ batch_size  *   max_sequence ]
+        pos1_ids = tf.placeholder(tf.int32, [None, None])  # [ batch_size  *   max_sequence ]
+        pos2_ids = tf.placeholder(tf.int32, [None, None])  # [ batch_size  *   max_sequence ]
 
         token_ids = tf.placeholder(tf.int32, [None, None])  # [ batch_size  *   max_sequence ]
 
@@ -488,15 +577,27 @@ class model:
         dropout_lstm_output_keep = tf.placeholder(tf.float32, name="dropout_lstm_output_keep")
         dropout_fcl_ner_keep = tf.placeholder(tf.float32, name="dropout_fcl_ner_keep")
         dropout_fcl_rel_keep = tf.placeholder(tf.float32, name="dropout_fcl_rel_keep")
+        # gru_keep_prob = tf.placeholder(tf.float32, name="gru_keep_prob")
+
+        self.initializer = None
+        if self.config.initializer == "normal":
+            self.initializer = tf.random_normal_initializer(mean=0.0, stddev=0.1)
+        elif self.config.initializer == "glorot":
+            self.initializer = tf.glorot_uniform_initializer()
+        elif self.config.initializer == "xavier":
+            self.initializer = tf.glorot_normal_initializer()
+        else:
+            raise ValueError("Unknown initializer")
 
         embedding_matrix = tf.get_variable(name="embeddings", shape=self.emb_mtx.shape,
                                            initializer=tf.constant_initializer(self.emb_mtx), trainable=False)
+        pos1_embedding = tf.get_variable('pos1_embedding', [self.config.pos_num, self.config.pos_size])
+        pos2_embedding = tf.get_variable('pos2_embedding', [self.config.pos_num, self.config.pos_size])
 
 
         #####char embeddings
 
         # 1. get character embeddings
-
         K = tf.get_variable(name="char_embeddings", dtype=tf.float32,
                             shape=[len(self.config.dataset_set_characters), self.config.char_embeddings_size])
         # shape = (batch, sentence, word, dim of char embeddings)
@@ -508,7 +609,6 @@ class model:
 
         char_embeddings_reshaped = tf.reshape(char_embeddings, shape=[-1, s[-2], self.config.char_embeddings_size])
         word_lengths_reshaped = tf.reshape(word_lengths, shape=[-1])
-
 
 
         char_hidden_size = self.config.hidden_size_char
@@ -530,12 +630,16 @@ class model:
         # concat char embeddings
 
         word_embeddings = tf.nn.embedding_lookup(embedding_matrix, embedding_ids)
+        pos1_emb = tf.nn.embedding_lookup(pos1_embedding, pos1_ids)
+        pos2_emb = tf.nn.embedding_lookup(pos2_embedding, pos2_ids)
 
+        input_rnn = word_embeddings
+        if self.config.use_position == True:
+            print(pos1_emb)
+            input_rnn = tf.concat([input_rnn, pos1_emb, pos2_emb], axis=-1)
         if self.config.use_chars == True:
-            input_rnn = tf.concat([word_embeddings, char_rep], axis=-1)
+            input_rnn = tf.concat([input_rnn, char_rep], axis=-1)
 
-        else:
-            input_rnn = word_embeddings
 
         embeddings_input=input_rnn
 
@@ -547,36 +651,40 @@ class model:
                                                                                 dropout_fcl_ner_keep,
                                                                                 entity_tags_ids, dropout_fcl_rel_keep,
                                                                                 is_train,
+                                                                                embedding_ids,
+                                                                                pos1_ids, pos2_ids,
                                                                                 scoring_matrix_gold,reuse=False)
 
         obj = tf.reduce_sum(lossNER) + tf.reduce_sum(lossREL)
-        #perturb the inputs
-       
         actualRel = tf.round(scoring_matrix_gold)
-
-
+        #perturb the inputs
         if self.config.use_adversarial==True:
             raw_perturb = tf.gradients(obj, embeddings_input)[0]  # [batch, L, dim]
-            normalized_per=tf.nn.l2_normalize(raw_perturb, axis=[1, 2])
-            perturb =self.config.alpha*tf.sqrt(tf.cast(tf.shape(input_rnn)[2], tf.float32)) * tf.stop_gradient(normalized_per)
+            normalized_per = tf.nn.l2_normalize(raw_perturb, axis=[1, 2])
+            perturb = self.config.alpha * tf.sqrt(tf.cast(tf.shape(input_rnn)[2], tf.float32)) * tf.stop_gradient(
+                normalized_per)
             perturb_inputs = embeddings_input + perturb
 
             lossNER_per, lossREL_per, _, _, _ = self.computeLoss(perturb_inputs,
-                                                             dropout_embedding_keep,
-                                                             dropout_lstm_keep,
-                                                             dropout_lstm_output_keep, seqlen,
-                                                             dropout_fcl_ner_keep,
-                                                             entity_tags_ids, dropout_fcl_rel_keep,
-                                                             is_train,
-                                                             scoring_matrix_gold, reuse=True)
+                                                                 dropout_embedding_keep,
+                                                                 dropout_lstm_keep,
+                                                                 dropout_lstm_output_keep, seqlen,
+                                                                 dropout_fcl_ner_keep,
+                                                                 entity_tags_ids, dropout_fcl_rel_keep,
+                                                                 is_train,
+                                                                 embedding_ids,
+                                                                 pos1_ids, pos2_ids,
+                                                                 scoring_matrix_gold, reuse=True)
+
 
             obj+=tf.reduce_sum(lossNER_per)+tf.reduce_sum(lossREL_per)
-
 
 
         m = {}
         m['isTrain'] = is_train
         m['embeddingIds'] = embedding_ids
+        m['pos1_emb'] = pos1_ids
+        m['pos2_emb'] = pos2_ids
         m['charIds'] = char_ids
         m['tokensLens'] = word_lengths
         m['entity_tags_ids'] = entity_tags_ids
@@ -589,6 +697,7 @@ class model:
         m['dropout_lstm_output']=dropout_lstm_output_keep
         m['dropout_fcl_ner']=dropout_fcl_ner_keep
         m['dropout_fcl_rel'] = dropout_fcl_rel_keep
+        # m['gru_keep_prob'] = gru_keep_prob
         m['tokens'] = tokens
         m['BIO'] = BIO
         m['entity_tags'] = entity_tags

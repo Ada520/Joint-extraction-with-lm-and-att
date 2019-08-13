@@ -55,30 +55,23 @@ if __name__ == "__main__":
 
         operations=tf_utils.operations(train_step,obj, m_op, predicted_op_ner, actual_op_ner, predicted_op_rel, actual_op_rel, score_op_rel)
 
-
         sess.run(tf.global_variables_initializer())
 
         best_score=0
+        nepoch_no_imprv = 0  # for early stopping
+
+        # names_to_vars = {v.op.name: v for v in tf.global_variables()}
+        # saver = tf.train.Saver(names_to_vars)
+
         for iter in range(config.nepochs+1):
 
-            model.train(train_data,operations,iter)
+            # saver.restore(sess, './model/model-' + str(iter))
 
+            model.train(train_data, operations, iter)
             test_score=model.evaluate(test_data,operations,'test')
 
             print ("\n- Test score {} in {} epoch\n".format(test_score,iter))
-            
-            import csv
-            with open(sys.argv[3] + "/result2_"+ sys.argv[2]+".csv", "a+", encoding = 'utf-8-sig') as myfile:
-                csv_writer = csv.writer(myfile)
-                csv_writer.writerow((str(iter),str(test_score)))
-            
-            if test_score>=best_score:
-                best_score = test_score
-                print("*******************************************************************************")
-                print ("- Best test score {} so far in {} epoch".format(dev_score,iter))
-                print("*******************************************************************************")
 
             if es_epoch==iter:
                     print("- early stopping after {} epochs".format(iter))
                     break
-        print(sys.argv[2])

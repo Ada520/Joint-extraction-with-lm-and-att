@@ -1,3 +1,10 @@
+import sys
+import os.path
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+sys.path.append(rootPath)
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "/..")))
+sys.path.extend(['/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/d/Program Files/Python/Python36/python36.zip', '/mnt/d/Program Files/Python/Python36/DLLs', '/mnt/d/Program Files/Python/Python36/lib', '/mnt/d/Program Files/Python/Python36', '/mnt/d/Program Files/Python/Python36/lib/site-packages', '/mnt/c/Program Files/JetBrains/PyCharm 2018.3.2/helpers/pycharm_matplotlib_backend'])
 import os
 import utils
 import parsers
@@ -32,7 +39,7 @@ class build_data():
         self.dataset_set_characters = utils.getCharsFromDocuments(dataset_documents)
         self.dataset_set_bio_tags, self.dataset_set_ec_tags = utils.getEntitiesFromDocuments(dataset_documents)
         self.dataset_set_relations = utils.getRelationsFromDocuments(dataset_documents)
-
+        self.dataset_set_pos1, self.dataset_set_pos2 = utils.getPositionFromDocuments(dataset_documents)
 
 
         if os.path.isfile(self.filename_embeddings+".pkl")==False:
@@ -46,12 +53,12 @@ class build_data():
 
 
 
-        parsers.preprocess(self.train_id_docs, self.wordindices, self.dataset_set_characters,
-                                                self.dataset_set_bio_tags, self.dataset_set_ec_tags, self.dataset_set_relations)
-        parsers.preprocess(self.dev_id_docs, self.wordindices, self.dataset_set_characters,
-                           self.dataset_set_bio_tags, self.dataset_set_ec_tags, self.dataset_set_relations)
-        parsers.preprocess(self.test_id_docs, self.wordindices, self.dataset_set_characters,
-                           self.dataset_set_bio_tags, self.dataset_set_ec_tags, self.dataset_set_relations)
+        parsers.preprocess(self.train_id_docs, self.wordindices, self.dataset_set_characters, self.dataset_set_pos1,
+                           self.dataset_set_pos2,self.dataset_set_bio_tags, self.dataset_set_ec_tags, self.dataset_set_relations)
+        parsers.preprocess(self.dev_id_docs, self.wordindices, self.dataset_set_characters, self.dataset_set_pos1,
+                           self.dataset_set_pos2,self.dataset_set_bio_tags, self.dataset_set_ec_tags, self.dataset_set_relations)
+        parsers.preprocess(self.test_id_docs, self.wordindices, self.dataset_set_characters,self.dataset_set_pos1,
+                           self.dataset_set_pos2,self.dataset_set_bio_tags, self.dataset_set_ec_tags, self.dataset_set_relations)
 
 
 
@@ -67,7 +74,11 @@ class build_data():
         self.ner_classes = config_file.getProperty("ner_classes")
         self.use_chars = utils.strToBool(config_file.getProperty("use_chars"))
         self.use_adversarial = utils.strToBool(config_file.getProperty("use_adversarial"))
+        self.initializer = config_file.getProperty("initializer")
+        self.use_position = utils.strToBool(config_file.getProperty("use_position"))
+        self.use_GRU = utils.strToBool(config_file.getProperty("use_GRU"))
         self.self_attention = utils.strToBool(config_file.getProperty("self_attention"))
+        self.use_bias = utils.strToBool(config_file.getProperty("use_bias"))
 
 
         # hyperparameters
@@ -76,6 +87,7 @@ class build_data():
         self.dropout_lstm_output = float(config_file.getProperty("dropout_lstm_output"))
         self.dropout_fcl_ner = float(config_file.getProperty("dropout_fcl_ner"))
         self.dropout_fcl_rel = float(config_file.getProperty("dropout_fcl_rel"))
+        self.gru_keep_prob = float(config_file.getProperty("gru_keep_prob"))
         self.hidden_size_lstm =int(config_file.getProperty("hidden_size_lstm"))
         self.hidden_size_n1 = int(config_file.getProperty("hidden_size_n1"))
         #self.hidden_size_n2 = config_file.getProperty("hidden_size_n2")
@@ -84,7 +96,16 @@ class build_data():
         self.hidden_size_char = int(config_file.getProperty("hidden_size_char"))
         self.label_embeddings_size = int(config_file.getProperty("label_embeddings_size"))
         self.alpha = float(config_file.getProperty("alpha"))
+        self.lmcost_lstm_gamma = float(config_file.getProperty("lmcost_lstm_gamma"))
+        self.lmcost_joint_lstm_gamma = float(config_file.getProperty("lmcost_joint_lstm_gamma"))
+        self.lmcost_hidden_layer_size = float(config_file.getProperty("lmcost_hidden_layer_size"))
+        self.lmcost_max_vocab_size = int(config_file.getProperty("lmcost_max_vocab_size"))
+        self.gru_size = int(config_file.getProperty("gru_size"))
+        self.pos_num = int(config_file.getProperty("pos_num"))
+        self.pos_size = int(config_file.getProperty("pos_size"))
         self.num_heads = int(config_file.getProperty("num_heads"))
+        self.weight_b = float(config_file.getProperty("weight_b"))
+
 
         # evaluation
         self.evaluation_method =config_file.getProperty("evaluation_method")

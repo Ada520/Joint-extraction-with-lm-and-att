@@ -1,8 +1,15 @@
+import sys
+import os.path
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+sys.path.append(rootPath)
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "/..")))
+sys.path.extend(['/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/f/PycharmProjects/multihead_joint_entity_relation_extraction-master', '/mnt/d/Program Files/Python/Python36/python36.zip', '/mnt/d/Program Files/Python/Python36/DLLs', '/mnt/d/Program Files/Python/Python36/lib', '/mnt/d/Program Files/Python/Python36', '/mnt/d/Program Files/Python/Python36/lib/site-packages', '/mnt/c/Program Files/JetBrains/PyCharm 2018.3.2/helpers/pycharm_matplotlib_backend'])
+
 import utils
 import csv
 import pandas as pd
 import numpy as np
-
 
 class headIdDoc:
     def __init__(self, id):
@@ -15,6 +22,8 @@ class headIdDoc:
 
         ###extend
         self.embedding_ids = []
+        self.pos1_ids = []
+        self.pos2_ids = []
         self.char_ids = []
         self.BIO_ids = []
         self.ecs = []
@@ -28,10 +37,12 @@ class headIdDoc:
         self.relations.append(relations)
         self.heads.append(heads)
 
-    def extend(self, wordindices, dataset_set_characters, dataset_set_bio_tags, dataset_set_ec_tags,
+    def extend(self,index, wordindices, dataset_set_characters,dataset_set_pos1,dataset_set_pos2 ,dataset_set_bio_tags, dataset_set_ec_tags,
                dataset_set_relations):
         for tId in range(len(self.tokens)):
             self.embedding_ids.append(int(utils.getEmbeddingId(self.tokens[tId], wordindices)))
+            self.pos1_ids.append(dataset_set_pos1[index][tId] if tId < len(dataset_set_pos1[index]) else 122)
+            self.pos2_ids.append(dataset_set_pos2[index][tId] if tId < len(dataset_set_pos2[index]) else 122)
             self.char_ids.append(utils.tokenToCharIds(self.tokens[tId], dataset_set_characters))
             self.BIO_ids.append(int(utils.getLabelId(self.BIOs[tId], dataset_set_bio_tags)))
             self.ecs.append(utils.getECfromBIO(self.BIOs[tId]))
@@ -69,9 +80,10 @@ def readHeadFile(headFile):
 
     return headIdParser(headfile).head_docs
 
-def preprocess(docs,wordindices,dataset_set_characters,dataset_set_bio_tags,dataset_set_ec_tags,dataset_set_relations):
-    for doc in docs:
-        doc.extend(wordindices,dataset_set_characters,dataset_set_bio_tags,dataset_set_ec_tags,dataset_set_relations)
+def preprocess(docs,wordindices,dataset_set_characters,dataset_set_pos1,dataset_set_pos2,dataset_set_bio_tags,dataset_set_ec_tags,dataset_set_relations):
+    for i in range(len(docs)):
+        docs[i].extend(i,wordindices,dataset_set_characters,dataset_set_pos1,dataset_set_pos2,dataset_set_bio_tags,dataset_set_ec_tags,dataset_set_relations)
+
 
 class read_properties:
     def __init__(self,filepath, sep='=', comment_char='#'):
